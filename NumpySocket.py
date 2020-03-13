@@ -51,10 +51,14 @@ class NumpySocket(object):
                 time.sleep(0.0001)
             if self.stop_thread.is_set():
                 return
-            self.send_data()
+            self._send_data()
             self.new_value_available.clear()
 
-    def send_data(self):
+    def send_data(self, data):
+        self.data_to_send = data
+        self.new_value_available.set()
+
+    def _send_data(self):
         data_as_numpy = np.asarray(self.data_to_send)
         # print(np.max(data_as_numpy))
         f = BytesIO()
