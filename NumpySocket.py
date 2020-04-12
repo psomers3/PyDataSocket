@@ -59,10 +59,16 @@ class NumpySocket(object):
         self.new_value_available.set()
 
     def _send_data(self):
-        data_as_numpy = np.asarray(self.data_to_send)
-        # print(np.max(data_as_numpy))
-        f = BytesIO()
-        np.savez_compressed(f, data=data_as_numpy)
+        if isinstance(self.data_to_send, dict):
+            for key in self.data_to_send.keys():
+                self.data_to_send[key] = np.asarray(self.data_to_send[key])
+            f = BytesIO()
+            np.savez_compressed(f, **self.data_to_send)
+        else:
+            data_as_numpy = np.asarray(self.data_to_send)
+            # print(np.max(data_as_numpy))
+            f = BytesIO()
+            np.savez_compressed(f, data=data_as_numpy)
 
         # determine file size in bytes
         f.seek(0, os.SEEK_END)
@@ -78,8 +84,6 @@ class NumpySocket(object):
 
     def shutdown(self):
         self.stop_thread.set()
-        try:  # in case the thread wasn't started
+        if self.thread.is_alive():
             self.thread.join()
-            self.socket.close()
-        except:
-            pass
+        self.socket.close()
