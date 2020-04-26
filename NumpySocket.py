@@ -1,6 +1,5 @@
 from threading import Event, Thread
-import select
-from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR, SO_REUSEPORT
+from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
 import time
 from io import BytesIO
 import numpy as np
@@ -8,8 +7,20 @@ import os
 import struct
 
 
-class NumpySocket(object):
-    def __init__(self, tcp_port, tcp_ip=''):
+NUMPY = 1
+JSON = 2
+
+
+def _get_socket():
+    new_socket = socket(AF_INET, SOCK_STREAM)
+    new_socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+    new_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    return new_socket
+
+
+class SendSocket(object):
+    def __init__(self, tcp_port, tcp_ip='', send_type=NUMPY):
+        self.send_type = send_type
         self.data_to_send = b'0'
         self.port = tcp_port
         self.ip = tcp_ip
@@ -17,11 +28,8 @@ class NumpySocket(object):
         self.thread = Thread(target=self.run)
         self.stop_thread = Event()
         self.connected = False
-        self.socket = socket(AF_INET, SOCK_STREAM)
-        self.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-        self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self.socket = _get_socket()
         self.socket.bind((tcp_ip, tcp_port))
-        self.socket_accept_thread = Thread(target=self._socket_accept)
         self.connection = None
 
     def _socket_accept(self):
@@ -32,8 +40,7 @@ class NumpySocket(object):
             while not self.connected:
                 if self.stop_thread.is_set():
                     break
-                self.socket = socket(AF_INET, SOCK_STREAM)
-                self.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+                self.socket = _get_socket()
                 self.socket.bind((self.ip, self.port))
                 self.socket.setblocking(0)
                 print('listening on port ', self.port)
@@ -43,12 +50,16 @@ class NumpySocket(object):
                         return
                     try:
                         self.connection, client_address = self.socket.accept()
-                    except:
+                    except BlockingIOError:
                         continue
                     self.connected = True
+                    type_msg = struct.pack('I', self.send_type)
+                    self.connection.sendall(type_msg)
 
             while not self.new_value_available.is_set():
                 time.sleep(0.0001)
+                if self.stop_thread.is_set():
+                    return
             if self.stop_thread.is_set():
                 return
             self._send_data()
@@ -59,17 +70,21 @@ class NumpySocket(object):
         self.new_value_available.set()
 
     def _send_data(self):
-        if isinstance(self.data_to_send, dict):
-            for key in self.data_to_send.keys():
-                self.data_to_send[key] = np.asarray(self.data_to_send[key])
-            f = BytesIO()
-            np.savez_compressed(f, **self.data_to_send)
-        else:
-            data_as_numpy = np.asarray(self.data_to_send)
-            # print(np.max(data_as_numpy))
-            f = BytesIO()
-            np.savez_compressed(f, data=data_as_numpy)
+        if self.send_type == NUMPY:
+            if isinstance(self.data_to_send, dict):
+                for key in self.data_to_send.keys():
+                    self.data_to_send[key] = np.asarray(self.data_to_send[key])
+                f = BytesIO()
+                np.savez_compressed(f, **self.data_to_send)
+            else:
+                data_as_numpy = np.asarray(self.data_to_send)
+                # print(np.max(data_as_numpy))
+                f = BytesIO()
+                np.savez_compressed(f, data=data_as_numpy)
+        elif self.send_type == JSON:
+            # TODO: implement JSON
 
+            pass
         # determine file size in bytes
         f.seek(0, os.SEEK_END)
         size = f.tell()
@@ -77,13 +92,126 @@ class NumpySocket(object):
             self.connection.send(struct.pack('I', size))
             f.seek(0)
             self.connection.sendall(f.read())  # Send data
-        except Exception as e:
+        except BrokenPipeError as e:
             print(e)
             self.socket.close()
             self.connected = False
 
-    def shutdown(self):
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
         self.stop_thread.set()
         if self.thread.is_alive():
             self.thread.join()
         self.socket.close()
+        print('send socket closed')
+
+
+# a client socket
+class RecieveSocket(object):
+    def __init__(self, tcp_port, handler_function, tcp_ip=''):
+        if not callable(handler_function):
+            raise ValueError("Handler function must be a callable function taking one input.")
+
+        self.handler_function = handler_function
+        self.new_data = None
+        self.new_data_flag = Event()
+        self.handler_thread = Thread(target=self._handler)
+        self.socket = _get_socket()
+        self.thread = Thread(target=self.recieve_data)
+        self.port = tcp_port
+        self.ip = tcp_ip
+        self.block_size = 0
+        self.is_connected = False
+        self.shut_down_flag = Event()
+        self.data_mode = None
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.shut_down_flag.set()
+        if self.thread.is_alive():
+            self.thread.join()
+        if self.handler_thread.is_alive():
+            self.handler_thread.join()
+        self.socket.close()
+        self.socket = _get_socket()
+        print('receive socket closed')
+
+    def initialize(self):
+        while not self.is_connected and not self.shut_down_flag.is_set():
+            try:
+                self.socket.connect((self.ip, self.port))
+            except ConnectionError as e:
+                # print(e)
+                self.socket = _get_socket()
+                time.sleep(0.001)
+                continue
+            print("connected on port ", self.port)
+            self.is_connected = True
+
+            bytes = self.socket.recv(4)
+            data_type = struct.unpack('I', bytes)[0]
+
+            if data_type == NUMPY:
+                self.data_mode = NUMPY
+                print('Expecting numpy files on receive.')
+            elif data_type == JSON:
+                self.data_mode = JSON
+                print('Expecting json message on receive.')
+
+            self.new_data_flag.clear()
+            self.handler_thread.start()
+
+    def recieve_data(self):
+        self.initialize()
+        while self.is_connected and not self.shut_down_flag.is_set():
+            toread = 4
+            buf = bytearray(toread)
+            view = memoryview(buf)
+            while toread:
+                if self.shut_down_flag.is_set():
+                    return
+                try:
+                    nbytes = self.socket.recv_into(view, toread)
+                except OSError:
+                    continue
+                view = view[nbytes:]  # slicing views is cheap
+                toread -= nbytes
+
+            toread = int.from_bytes(buf, "little")
+            buf = bytearray(toread)
+            view = memoryview(buf)
+            while toread:
+                if self.shut_down_flag.is_set():
+                    return
+                try:
+                    nbytes = self.socket.recv_into(view, toread)
+                except OSError:
+                    continue
+                view = view[nbytes:]  # slicing views is cheap
+                toread -= nbytes
+
+            as_file = BytesIO(buf)
+            as_file.seek(0)
+            if self.data_mode == NUMPY:
+                try:
+                    self.new_data = np.load(as_file)
+                except OSError as e:
+                    print(e)
+                    continue
+            elif self.data_mode == JSON:
+                # TODO: implement json
+                pass
+            self.new_data_flag.set()
+
+    def _handler(self):
+        while True:
+            while not self.new_data_flag.is_set():
+                if self.shut_down_flag.is_set():
+                    return
+                time.sleep(0.001)
+            self.new_data_flag.clear()
+            self.handler_function(self.new_data)
