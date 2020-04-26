@@ -3,7 +3,7 @@ import time
 from threading import Thread
 
 
-number_of_messages = 2000  # number of sample messages to send
+number_of_messages = 5  # number of sample messages to send
 port = 4001  # TCP port to use
 
 
