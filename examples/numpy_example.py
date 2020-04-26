@@ -32,7 +32,7 @@ def recieving_function():
     rec_socket = RecieveSocket(tcp_port=port, handler_function=print_value)
     rec_socket.start()
 
-    while num_messages_recieved[0] < number_of_messages - 2:
+    while num_messages_recieved[0] < number_of_messages:
         # add delay so this loop does not unnecessarily tax the CPU
         time.sleep(0.25)
 
