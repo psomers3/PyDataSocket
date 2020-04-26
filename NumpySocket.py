@@ -212,7 +212,7 @@ class RecieveSocket(object):
                     print(e)
                     continue
             elif self.data_mode == JSON:
-                self.new_data = buf.decode()
+                self.new_data = json.loads(buf.decode())
 
             self.new_data_flag.set()
 
