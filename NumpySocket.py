@@ -20,7 +20,7 @@ def _get_socket():
 
 
 class SendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='', send_type=NUMPY):
+    def __init__(self, tcp_port, tcp_ip='', send_type=NUMPY, verbose=True):
         self.send_type = send_type
         self.data_to_send = b'0'
         self.port = tcp_port
@@ -32,6 +32,7 @@ class SendSocket(object):
         self.socket = _get_socket()
         self.socket.bind((tcp_ip, tcp_port))
         self.connection = None
+        self.verbose = verbose
 
     def _socket_accept(self):
         self.connection, client_address = self.socket.accept()
@@ -44,7 +45,8 @@ class SendSocket(object):
                 self.socket = _get_socket()
                 self.socket.bind((self.ip, self.port))
                 self.socket.setblocking(0)
-                print('listening on port ', self.port)
+                if self.verbose:
+                    print('listening on port ', self.port)
                 self.socket.listen(1)
                 while not self.connected:
                     if self.stop_thread.is_set():
@@ -104,7 +106,8 @@ class SendSocket(object):
             self.connection.send(struct.pack('I', size))
             self.connection.sendall(f)  # Send data
         except ConnectionError as e:
-            print(e)
+            if self.verbose:
+                print(e)
             self.socket.close()
             self.connected = False
 
@@ -120,10 +123,10 @@ class SendSocket(object):
 
 # a client socket
 class RecieveSocket(object):
-    def __init__(self, tcp_port, handler_function, tcp_ip=''):
+    def __init__(self, tcp_port, handler_function, tcp_ip='', verbose=True):
         if not callable(handler_function):
             raise ValueError("Handler function must be a callable function taking one input.")
-
+        self.verbose = verbose
         self.handler_function = handler_function
         self.new_data = None
         self.new_data_flag = Event()
@@ -158,7 +161,8 @@ class RecieveSocket(object):
                 self.socket = _get_socket()
                 time.sleep(0.001)
                 continue
-            print("connected on port ", self.port)
+            if self.verbose:
+                print("connected on port ", self.port)
             self.is_connected = True
 
             bytes = self.socket.recv(4)
@@ -166,10 +170,12 @@ class RecieveSocket(object):
 
             if data_type == NUMPY:
                 self.data_mode = NUMPY
-                print('Expecting numpy files on receive.')
+                if self.verbose:
+                    print('Expecting numpy files on receive.')
             elif data_type == JSON:
                 self.data_mode = JSON
-                print('Expecting json message on receive.')
+                if self.verbose:
+                    print('Expecting json message on receive.')
 
             self.new_data_flag.clear()
             self.handler_thread.start()
@@ -209,7 +215,8 @@ class RecieveSocket(object):
                 try:
                     self.new_data = np.load(as_file)
                 except OSError as e:
-                    print(e)
+                    if self.verbose:
+                        print(e)
                     continue
             elif self.data_mode == JSON:
                 self.new_data = json.loads(buf.decode())

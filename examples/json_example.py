@@ -9,7 +9,7 @@ port = 4001  # TCP port to use
 
 # define a function to send data across a TCP socket
 def sending_function():
-    send_socket = SendSocket(tcp_port=port, send_type=JSON)
+    send_socket = SendSocket(tcp_port=port, send_type=JSON, verbose=False)
     send_socket.start()
 
     for i in range(number_of_messages):
