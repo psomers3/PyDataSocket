@@ -5,6 +5,7 @@ from io import BytesIO
 import numpy as np
 import os
 import struct
+import json
 
 
 NUMPY = 1
@@ -81,17 +82,27 @@ class SendSocket(object):
                 # print(np.max(data_as_numpy))
                 f = BytesIO()
                 np.savez_compressed(f, data=data_as_numpy)
-        elif self.send_type == JSON:
-            # TODO: implement JSON
 
-            pass
-        # determine file size in bytes
-        f.seek(0, os.SEEK_END)
-        size = f.tell()
+            # determine file size in bytes
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(0)
+            f = f.read()
+
+        elif self.send_type == JSON:
+            try:
+                f = json.dumps(self.data_to_send).encode()
+            except TypeError:
+                try:
+                    f = json.dumps(self.data_to_send.tolist()).encode()
+                except TypeError as e:
+                    print(e)
+
+            size = len(f)
+
         try:
             self.connection.send(struct.pack('I', size))
-            f.seek(0)
-            self.connection.sendall(f.read())  # Send data
+            self.connection.sendall(f)  # Send data
         except BrokenPipeError as e:
             print(e)
             self.socket.close()
@@ -105,7 +116,6 @@ class SendSocket(object):
         if self.thread.is_alive():
             self.thread.join()
         self.socket.close()
-        print('send socket closed')
 
 
 # a client socket
@@ -138,7 +148,6 @@ class RecieveSocket(object):
             self.handler_thread.join()
         self.socket.close()
         self.socket = _get_socket()
-        print('receive socket closed')
 
     def initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
@@ -194,17 +203,17 @@ class RecieveSocket(object):
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
 
-            as_file = BytesIO(buf)
-            as_file.seek(0)
             if self.data_mode == NUMPY:
+                as_file = BytesIO(buf)
+                as_file.seek(0)
                 try:
                     self.new_data = np.load(as_file)
                 except OSError as e:
                     print(e)
                     continue
             elif self.data_mode == JSON:
-                # TODO: implement json
-                pass
+                self.new_data = buf.decode()
+
             self.new_data_flag.set()
 
     def _handler(self):

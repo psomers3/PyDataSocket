@@ -1,4 +1,4 @@
-from NumpySocket import SendSocket, RecieveSocket, NUMPY
+from NumpySocket import SendSocket, RecieveSocket, JSON
 import time
 from threading import Thread
 
@@ -9,11 +9,11 @@ port = 4001  # TCP port to use
 
 # define a function to send data across a TCP socket
 def sending_function():
-    send_socket = SendSocket(tcp_port=port, send_type=NUMPY)
+    send_socket = SendSocket(tcp_port=port, send_type=JSON)
     send_socket.start()
 
     for i in range(number_of_messages):
-        send_socket.send_data(i*10)
+        send_socket.send_data("The value of i is now " + str(i))
         time.sleep(0.5)
 
     print("closing send socket.")
@@ -26,7 +26,7 @@ def recieving_function():
 
     # function to run when a new piece of data is received
     def print_value(data):
-        print("value recieved: ", data['data'])
+        print("value recieved: ", data)
         num_messages_recieved[0] = 1 + num_messages_recieved[0]
 
     rec_socket = RecieveSocket(tcp_port=port, handler_function=print_value)
