@@ -1,4 +1,4 @@
-from DataSocket.DataSocket import SendSocket, RecieveSocket, JSON
+from DataSocket import SendSocket, RecieveSocket, JSON
 import time
 from threading import Thread
 
