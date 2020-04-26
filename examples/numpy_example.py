@@ -1,4 +1,4 @@
-from NumpySocket import SendSocket, RecieveSocket, NUMPY
+from DataSocket.DataSocket import SendSocket, RecieveSocket, NUMPY
 import time
 from threading import Thread
 
