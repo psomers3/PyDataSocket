@@ -103,7 +103,7 @@ class SendSocket(object):
         try:
             self.connection.send(struct.pack('I', size))
             self.connection.sendall(f)  # Send data
-        except BrokenPipeError as e:
+        except ConnectionError as e:
             print(e)
             self.socket.close()
             self.connected = False
