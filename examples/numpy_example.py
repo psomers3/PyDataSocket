@@ -1,9 +1,9 @@
-from DataSocket import SendSocket, RecieveSocket, NUMPY
+from DataSocket import SendSocket, ReceiveSocket, NUMPY
 import time
 from threading import Thread
 
 
-number_of_messages = 5  # number of sample messages to send
+number_of_messages = 2000  # number of sample messages to send
 port = 4001  # TCP port to use
 
 
@@ -14,7 +14,7 @@ def sending_function():
 
     for i in range(number_of_messages):
         send_socket.send_data(i*10)
-        time.sleep(0.5)
+        time.sleep(0.25)
 
     print("closing send socket.")
     send_socket.stop()
@@ -29,7 +29,7 @@ def recieving_function():
         print("value recieved: ", data['data'])
         num_messages_recieved[0] = 1 + num_messages_recieved[0]
 
-    rec_socket = RecieveSocket(tcp_port=port, handler_function=print_value)
+    rec_socket = ReceiveSocket(tcp_port=port, handler_function=print_value)
     rec_socket.start()
 
     while num_messages_recieved[0] < number_of_messages:

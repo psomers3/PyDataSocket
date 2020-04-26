@@ -1,1 +1,1 @@
-from .DataSocket import SendSocket, RecieveSocket, NUMPY, JSON
+from .DataSocket import SendSocket, ReceiveSocket, NUMPY, JSON

@@ -1,4 +1,4 @@
-from threading import Event, Thread
+from threading import Event, Thread, Lock
 from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
 import time
 from io import BytesIO
@@ -20,17 +20,17 @@ def _get_socket():
 
 
 class SendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='', send_type=NUMPY, verbose=True):
+    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True):
         self.send_type = send_type
         self.data_to_send = b'0'
-        self.port = tcp_port
+        self.port = int(tcp_port)
         self.ip = tcp_ip
         self.new_value_available = Event()
         self.thread = Thread(target=self.run)
         self.stop_thread = Event()
         self.connected = False
         self.socket = _get_socket()
-        self.socket.bind((tcp_ip, tcp_port))
+        self.socket.bind((self.ip, self.port))
         self.connection = None
         self.verbose = verbose
 
@@ -122,23 +122,40 @@ class SendSocket(object):
 
 
 # a client socket
-class RecieveSocket(object):
-    def __init__(self, tcp_port, handler_function, tcp_ip='', verbose=True):
+class ReceiveSocket(object):
+    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True):
+        if handler_function is None:
+            def pass_func(data):
+                pass
+            handler_function = pass_func
+
         if not callable(handler_function):
             raise ValueError("Handler function must be a callable function taking one input.")
+
         self.verbose = verbose
         self.handler_function = handler_function
-        self.new_data = None
+        self._new_data = None
+        self._new_data_lock = Lock()
         self.new_data_flag = Event()
         self.handler_thread = Thread(target=self._handler)
         self.socket = _get_socket()
         self.thread = Thread(target=self.recieve_data)
-        self.port = tcp_port
+        self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
         self.is_connected = False
         self.shut_down_flag = Event()
         self.data_mode = None
+
+    @property
+    def new_data(self):
+        with self._new_data_lock:
+            return self._new_data
+
+    @new_data.setter
+    def new_data(self, data):
+        with self._new_data_lock:
+            self._new_data = data
 
     def start(self):
         self.thread.start()
@@ -149,6 +166,7 @@ class RecieveSocket(object):
             self.thread.join()
         if self.handler_thread.is_alive():
             self.handler_thread.join()
+        self.shut_down_flag.clear()
         self.socket.close()
         self.socket = _get_socket()
 
@@ -156,7 +174,7 @@ class RecieveSocket(object):
         while not self.is_connected and not self.shut_down_flag.is_set():
             try:
                 self.socket.connect((self.ip, self.port))
-            except ConnectionError as e:
+            except (ConnectionError, OSError) as e:
                 # print(e)
                 self.socket = _get_socket()
                 time.sleep(0.001)
