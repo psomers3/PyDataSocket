@@ -20,19 +20,19 @@ def sending_function():
     send_socket.stop()
 
 
-# define a function to recieve and print data from a TCP socket
-def recieving_function():
-    num_messages_recieved = [0]
+# define a function to receive and print data from a TCP socket
+def receiving_function():
+    num_messages_received = [0]
 
     # function to run when a new piece of data is received
     def print_value(data):
-        print("value recieved: ", data['data'])
-        num_messages_recieved[0] = 1 + num_messages_recieved[0]
+        print("value received: ", data['data'])
+        num_messages_received[0] = 1 + num_messages_received[0]
 
     rec_socket = ReceiveSocket(tcp_port=port, handler_function=print_value)
     rec_socket.start()
 
-    while num_messages_recieved[0] < number_of_messages:
+    while num_messages_received[0] < number_of_messages:
         # add delay so this loop does not unnecessarily tax the CPU
         time.sleep(0.25)
 
@@ -43,7 +43,7 @@ def recieving_function():
 if __name__ == '__main__':
     # define separate threads to run the sockets simultaneously
     send_thread = Thread(target=sending_function)
-    rec_thread = Thread(target=recieving_function)
+    rec_thread = Thread(target=receiving_function)
 
     send_thread.start()
     rec_thread.start()
