@@ -46,14 +46,14 @@ class SendSocket(object):
                 self.socket.bind((self.ip, self.port))
                 self.socket.setblocking(0)
                 if self.verbose:
-                    print('listening on port ', self.port)
+                    print 'listening on port ' + str(self.port)
                 self.socket.listen(1)
                 while not self.connected:
                     if self.stop_thread.is_set():
                         return
                     try:
                         self.connection, client_address = self.socket.accept()
-                    except BlockingIOError:
+                    except IOError:
                         continue
                     self.connected = True
                     type_msg = struct.pack('I', self.send_type)
@@ -105,7 +105,7 @@ class SendSocket(object):
         try:
             self.connection.send(struct.pack('I', size))
             self.connection.sendall(f)  # Send data
-        except ConnectionError as e:
+        except OSError as e:
             if self.verbose:
                 print(e)
             self.socket.close()
@@ -174,13 +174,13 @@ class ReceiveSocket(object):
         while not self.is_connected and not self.shut_down_flag.is_set():
             try:
                 self.socket.connect((self.ip, self.port))
-            except (ConnectionError, OSError) as e:
+            except OSError as e:
                 # print(e)
                 self.socket = _get_socket()
                 time.sleep(0.001)
                 continue
             if self.verbose:
-                print("connected on port ", self.port)
+                print "connected on port " + str(self.port)
             self.is_connected = True
 
             bytes = self.socket.recv(4)
@@ -189,11 +189,11 @@ class ReceiveSocket(object):
             if data_type == NUMPY:
                 self.data_mode = NUMPY
                 if self.verbose:
-                    print('Expecting numpy files on receive.')
+                    print 'Expecting numpy files on receive.'
             elif data_type == JSON:
                 self.data_mode = JSON
                 if self.verbose:
-                    print('Expecting json message on receive.')
+                    print 'Expecting json message on receive.'
 
             self.new_data_flag.clear()
             self.handler_thread.start()
@@ -214,7 +214,7 @@ class ReceiveSocket(object):
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
 
-            toread = int.from_bytes(buf, "little")
+            toread = struct.unpack('<I', buf)[0]
             buf = bytearray(toread)
             view = memoryview(buf)
             while toread:

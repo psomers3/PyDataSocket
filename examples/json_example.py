@@ -16,7 +16,7 @@ def sending_function():
         send_socket.send_data("The value of i is now " + str(i))
         time.sleep(0.5)
 
-    print("closing send socket.")
+    print "closing send socket."
     send_socket.stop()
 
 
@@ -26,7 +26,7 @@ def receiving_function():
 
     # function to run when a new piece of data is received
     def print_value(data):
-        print("value recieved: ", data)
+        print "value recieved: " + str(data)
         num_messages_received[0] = 1 + num_messages_received[0]
 
     rec_socket = ReceiveSocket(tcp_port=port, handler_function=print_value)
@@ -36,7 +36,7 @@ def receiving_function():
         # add delay so this loop does not unnecessarily tax the CPU
         time.sleep(0.25)
 
-    print("closing receive socket.")
+    print "closing receive socket."
     rec_socket.stop()
 
 
@@ -46,6 +46,7 @@ if __name__ == '__main__':
     rec_thread = Thread(target=receiving_function)
 
     send_thread.start()
+    time.sleep(0.1)  # let receive socket start
     rec_thread.start()
 
     send_thread.join()
