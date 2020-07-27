@@ -1,1 +1,1 @@
-from .DataSocket import SendSocket, ReceiveSocket, NUMPY, JSON
+from .TCPDataSocket import TCPSendSocket, TCPReceiveSocket, NUMPY, JSON

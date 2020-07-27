@@ -19,7 +19,7 @@ def _get_socket():
     return new_socket
 
 
-class SendSocket(object):
+class TCPSendSocket(object):
     def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True):
         self.send_type = send_type
         self.data_to_send = b'0'
@@ -111,8 +111,11 @@ class SendSocket(object):
             self.socket.close()
             self.connected = False
 
-    def start(self):
+    def start(self, blocking=False):
         self.thread.start()
+        if blocking:
+            while not self.connected:
+                time.sleep(0.05)
 
     def stop(self):
         self.stop_thread.set()
@@ -122,7 +125,7 @@ class SendSocket(object):
 
 
 # a client socket
-class ReceiveSocket(object):
+class TCPReceiveSocket(object):
     def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True):
         if handler_function is None:
             def pass_func(data):
@@ -157,8 +160,11 @@ class ReceiveSocket(object):
         with self._new_data_lock:
             self._new_data = data
 
-    def start(self):
+    def start(self, blocking=False):
         self.thread.start()
+        if blocking:
+            while not self.is_connected:
+                time.sleep(0.05)
 
     def stop(self):
         self.shut_down_flag.set()
