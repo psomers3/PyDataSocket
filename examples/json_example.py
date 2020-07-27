@@ -1,4 +1,4 @@
-from DataSocket import SendSocket, ReceiveSocket, JSON
+from DataSocket import TCPSendSocket, TCPReceiveSocket, JSON
 import time
 from threading import Thread
 
@@ -9,8 +9,8 @@ port = 4001  # TCP port to use
 
 # define a function to send data across a TCP socket
 def sending_function():
-    send_socket = SendSocket(tcp_port=port, send_type=JSON, verbose=True)
-    send_socket.start()
+    send_socket = TCPSendSocket(tcp_port=port, send_type=JSON, verbose=True)
+    send_socket.start(blocking=True)
 
     for i in range(number_of_messages):
         send_socket.send_data("The value of i is now " + str(i))
@@ -29,8 +29,8 @@ def receiving_function():
         print("value recieved: ", data)
         num_messages_received[0] = 1 + num_messages_received[0]
 
-    rec_socket = ReceiveSocket(tcp_port=port, handler_function=print_value)
-    rec_socket.start()
+    rec_socket = TCPReceiveSocket(tcp_port=port, handler_function=print_value)
+    rec_socket.start(blocking=True)
 
     while num_messages_received[0] < number_of_messages:
         # add delay so this loop does not unnecessarily tax the CPU

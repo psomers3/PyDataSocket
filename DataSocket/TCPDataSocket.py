@@ -111,8 +111,11 @@ class TCPSendSocket(object):
             self.socket.close()
             self.connected = False
 
-    def start(self):
+    def start(self, blocking=False):
         self.thread.start()
+        if blocking:
+            while not self.connected:
+                time.sleep(0.05)
 
     def stop(self):
         self.stop_thread.set()
@@ -157,8 +160,11 @@ class TCPReceiveSocket(object):
         with self._new_data_lock:
             self._new_data = data
 
-    def start(self):
+    def start(self, blocking=False):
         self.thread.start()
+        if blocking:
+            while not self.is_connected:
+                time.sleep(0.05)
 
     def stop(self):
         self.shut_down_flag.set()

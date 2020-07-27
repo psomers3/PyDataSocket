@@ -5,7 +5,7 @@ rec_socket = TCPReceiveSocket(4242,'0.0.0.0',@echo_back);
 send_socket.start()
 rec_socket.start()
 
-pause(20) % arbitrarily stay open for 20 seconds to receive the messages
+pause(10) % arbitrarily stay open for 10 seconds to receive the messages
           % from python
 
 send_socket.stop();
