@@ -26,7 +26,15 @@ classdef TCPReceiveSocket < handle
       end
       
       function start(self)
-          fopen(self.socket);
+          is_started = false;
+          while ~is_started
+              try
+                  fopen(self.socket);
+              catch
+                  continue
+              end
+              is_started = true;
+          end
       end
       
       function stop(self)

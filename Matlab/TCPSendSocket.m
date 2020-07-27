@@ -28,8 +28,16 @@ classdef TCPSendSocket < handle
       end
       
       function start(self)
-         fopen(self.socket);
-         fwrite(self.socket, self.message_format, 'int32');
+         is_started = false;
+          while ~is_started
+              try
+                  fopen(self.socket);
+              catch
+                  continue
+              end
+              is_started = true;
+          end
+          fwrite(self.socket, self.message_format, 'int32');
       end
       
       function stop(self)
