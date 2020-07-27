@@ -1,5 +1,5 @@
 from threading import Event, Thread, Lock
-from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SOCK_DGRAM
 import time
 from io import BytesIO
 import numpy as np
@@ -13,52 +13,32 @@ JSON = 2
 
 
 def _get_socket():
-    new_socket = socket(AF_INET, SOCK_STREAM)
-    new_socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+    new_socket = socket(AF_INET, SOCK_DGRAM)
     new_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     return new_socket
 
 
-class SendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True):
+class UDPSendSocket(object):
+    def __init__(self, udp_port, udp_ip='localhost', send_type=NUMPY, verbose=True):
         self.send_type = send_type
         self.data_to_send = b'0'
-        self.port = int(tcp_port)
-        self.ip = tcp_ip
+        self.port = int(udp_port)
+        self.ip = udp_ip
         self.new_value_available = Event()
         self.thread = Thread(target=self.run)
         self.stop_thread = Event()
         self.connected = False
         self.socket = _get_socket()
         self.socket.bind((self.ip, self.port))
-        self.connection = None
+        self.destination = (self.ip, self.port)
         self.verbose = verbose
 
-    def _socket_accept(self):
-        self.connection, client_address = self.socket.accept()
-
     def run(self):
-        while True:
-            while not self.connected:
-                if self.stop_thread.is_set():
-                    break
-                self.socket = _get_socket()
-                self.socket.bind((self.ip, self.port))
-                self.socket.setblocking(0)
-                if self.verbose:
-                    print('listening on port ', self.port)
-                self.socket.listen(1)
-                while not self.connected:
-                    if self.stop_thread.is_set():
-                        return
-                    try:
-                        self.connection, client_address = self.socket.accept()
-                    except BlockingIOError:
-                        continue
-                    self.connected = True
-                    type_msg = struct.pack('I', self.send_type)
-                    self.connection.sendall(type_msg)
+        self.socket = _get_socket()
+        if self.verbose:
+            print('sending data to ', str(self.port) + '@' + self.ip)
 
+        while True:
             while not self.new_value_available.is_set():
                 time.sleep(0.0001)
                 if self.stop_thread.is_set():
@@ -103,8 +83,9 @@ class SendSocket(object):
             size = len(f)
 
         try:
-            self.connection.send(struct.pack('I', size))
-            self.connection.sendall(f)  # Send data
+            data_size = struct.pack('I', size)
+            self.socket.sendto(struct.pack('I', size), self.destination)
+            self.socket.sendto(f, self.destination)  # Send data
         except ConnectionError as e:
             if self.verbose:
                 print(e)
@@ -122,8 +103,8 @@ class SendSocket(object):
 
 
 # a client socket
-class ReceiveSocket(object):
-    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True):
+class UDPReceiveSocket(object):
+    def __init__(self, udp_port, handler_function=None, udp_ip='localhost', verbose=True, send_type=NUMPY):
         if handler_function is None:
             def pass_func(data):
                 pass
@@ -132,6 +113,7 @@ class ReceiveSocket(object):
         if not callable(handler_function):
             raise ValueError("Handler function must be a callable function taking one input.")
 
+        self.data_mode = send_type
         self.verbose = verbose
         self.handler_function = handler_function
         self._new_data = None
@@ -140,12 +122,11 @@ class ReceiveSocket(object):
         self.handler_thread = Thread(target=self._handler)
         self.socket = _get_socket()
         self.thread = Thread(target=self.recieve_data)
-        self.port = int(tcp_port)
-        self.ip = tcp_ip
+        self.port = int(udp_port)
+        self.ip = udp_ip
         self.block_size = 0
         self.is_connected = False
         self.shut_down_flag = Event()
-        self.data_mode = None
 
     @property
     def new_data(self):
@@ -164,6 +145,7 @@ class ReceiveSocket(object):
         self.shut_down_flag.set()
         if self.thread.is_alive():
             self.thread.join()
+        self.shut_down_flag.set()
         if self.handler_thread.is_alive():
             self.handler_thread.join()
         self.shut_down_flag.clear()
@@ -173,29 +155,15 @@ class ReceiveSocket(object):
     def initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
             try:
-                self.socket.connect((self.ip, self.port))
+                self.socket.bind((self.ip, self.port))
             except (ConnectionError, OSError) as e:
                 # print(e)
                 self.socket = _get_socket()
                 time.sleep(0.001)
                 continue
             if self.verbose:
-                print("connected on port ", self.port)
+                print("connected to ", str(self.port) + '@' + self.ip)
             self.is_connected = True
-
-            bytes = self.socket.recv(4)
-            data_type = struct.unpack('I', bytes)[0]
-
-            if data_type == NUMPY:
-                self.data_mode = NUMPY
-                if self.verbose:
-                    print('Expecting numpy files on receive.')
-            elif data_type == JSON:
-                self.data_mode = JSON
-                if self.verbose:
-                    print('Expecting json message on receive.')
-
-            self.new_data_flag.clear()
             self.handler_thread.start()
 
     def recieve_data(self):
@@ -208,8 +176,9 @@ class ReceiveSocket(object):
                 if self.shut_down_flag.is_set():
                     return
                 try:
-                    nbytes = self.socket.recv_into(view, toread)
-                except OSError:
+                    nbytes = self.socket.recvfrom_into(view, toread)[0]
+                except OSError as e:
+                    print(e)
                     continue
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
@@ -221,8 +190,9 @@ class ReceiveSocket(object):
                 if self.shut_down_flag.is_set():
                     return
                 try:
-                    nbytes = self.socket.recv_into(view, toread)
-                except OSError:
+                    nbytes = self.socket.recvfrom_into(view, toread)[0]
+                except OSError as e:
+                    print(e)
                     continue
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
