@@ -1,4 +1,4 @@
-from DataSocket import TCPSendSocket, TCPReceiveSocket, JSON
+from DataSocket import TCPSendSocket, TCPReceiveSocket, HDF
 import time
 from threading import Thread
 
@@ -9,11 +9,11 @@ port = 4001  # TCP port to use
 
 # define a function to send data across a TCP socket
 def sending_function():
-    send_socket = TCPSendSocket(tcp_port=port, send_type=JSON, verbose=True)
+    send_socket = TCPSendSocket(tcp_port=port, send_type=HDF, verbose=True)
     send_socket.start(blocking=True)
 
     for i in range(number_of_messages):
-        send_socket.send_data("The value of i is now " + str(i))
+        send_socket.send_data({'data': "The value of i is now " + str(i)})
         time.sleep(0.5)
 
     print("closing send socket.")

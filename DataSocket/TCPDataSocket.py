@@ -6,10 +6,11 @@ import numpy as np
 import os
 import struct
 import json
-
+import h5py
 
 NUMPY = 1
 JSON = 2
+HDF = 3
 
 
 def _get_socket():
@@ -101,6 +102,20 @@ class TCPSendSocket(object):
                     print(e)
 
             size = len(f)
+        elif self.send_type == HDF:
+            f = BytesIO()
+            h5f = h5py.File(f, 'w')
+            if isinstance(self.data_to_send, dict):
+                for key in self.data_to_send.keys():
+                    h5f.create_dataset(key, data=self.data_to_send[key])
+            else:
+                h5f.create_dataset('data', data=self.data_to_send)
+            h5f.close()
+            # determine file size in bytes
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(0)
+            f = f.read()
 
         try:
             self.connection.send(struct.pack('I', size))
@@ -142,7 +157,7 @@ class TCPReceiveSocket(object):
         self.new_data_flag = Event()
         self.handler_thread = Thread(target=self._handler)
         self.socket = _get_socket()
-        self.thread = Thread(target=self.recieve_data)
+        self.thread = Thread(target=self.receive_data)
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
@@ -200,11 +215,15 @@ class TCPReceiveSocket(object):
                 self.data_mode = JSON
                 if self.verbose:
                     print('Expecting json message on receive.')
+            elif data_type == HDF:
+                self.data_mode = HDF
+                if self.verbose:
+                    print('Expecting HDF5 files on receive.')
 
             self.new_data_flag.clear()
             self.handler_thread.start()
 
-    def recieve_data(self):
+    def receive_data(self):
         self.initialize()
         while self.is_connected and not self.shut_down_flag.is_set():
             toread = 4
@@ -242,8 +261,26 @@ class TCPReceiveSocket(object):
                     if self.verbose:
                         print(e)
                     continue
+
             elif self.data_mode == JSON:
                 self.new_data = json.loads(buf.decode())
+
+            elif self.data_mode == HDF:
+                as_file = BytesIO(buf)
+                as_file.seek(0)
+                try:
+                    data = h5py.File(as_file, 'r')
+                    if len(data.keys()) > 1:
+                        new_data = {}
+                        for key in data.keys():
+                            new_data[key] = np.array(data.get(key))
+                    else:
+                        new_data = np.array(data.get(list(data.keys())[0]))
+                    self.new_data = new_data
+                except OSError as e:
+                    if self.verbose:
+                        print(e)
+                    continue
 
             self.new_data_flag.set()
 
