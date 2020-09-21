@@ -1,6 +1,5 @@
 from threading import Event, Thread, Lock
 from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
-import select
 import time
 from io import BytesIO
 import numpy as np
@@ -28,7 +27,7 @@ class TCPSendSocket(object):
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.new_value_available = Event()
-        self.thread = Thread(target=self._run, daemon=True)
+        self.thread = Thread(target=self._run)
         self.stop_thread = Event()
         self.connected = False
         self.socket = _get_socket()
@@ -243,12 +242,8 @@ class TCPReceiveSocket(object):
     def _initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
             self._establish_connection()
-            r = None
-            while not r:
-                r, _, _ = select.select([self.socket], [], [])
-                if r:
-                    bytes = self.connection.recv(4)
-            data_type = struct.unpack('I', bytes)[0]
+            bytes_received = self.connection.recv(4)
+            data_type = struct.unpack('I', bytes_received)[0]
 
             if data_type == NUMPY:
                 self.data_mode = NUMPY
