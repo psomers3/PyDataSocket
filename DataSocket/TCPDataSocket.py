@@ -1,5 +1,6 @@
 from threading import Event, Thread, Lock
 from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
+import select
 import time
 from io import BytesIO
 import numpy as np
@@ -27,7 +28,7 @@ class TCPSendSocket(object):
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.new_value_available = Event()
-        self.thread = Thread(target=self._run)
+        self.thread = Thread(target=self._run, daemon=True)
         self.stop_thread = Event()
         self.connected = False
         self.socket = _get_socket()
@@ -149,7 +150,7 @@ class TCPSendSocket(object):
     def stop(self):
         self.stop_thread.set()
         if self.thread.is_alive():
-            self.thread.join()
+            self.thread.join(timeout=2)
         self.socket.close()
 
 
@@ -169,9 +170,9 @@ class TCPReceiveSocket(object):
         self._new_data = None
         self._new_data_lock = Lock()
         self.new_data_flag = Event()
-        self.handler_thread = Thread(target=self._handler)
+        self.handler_thread = Thread(target=self._handler, daemon=True)
         self.socket = _get_socket()
-        self.thread = Thread(target=self._receive_data)
+        self.thread = Thread(target=self._receive_data, daemon=True)
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
@@ -200,9 +201,10 @@ class TCPReceiveSocket(object):
     def stop(self):
         self.shut_down_flag.set()
         if self.thread.is_alive():
-            self.thread.join()
+            self.thread.join(timeout=2)
+
         if self.handler_thread.is_alive():
-            self.handler_thread.join()
+            self.handler_thread.join(timeout=2)
         self.shut_down_flag.clear()
         self.socket.close()
         self.socket = _get_socket()
@@ -241,8 +243,11 @@ class TCPReceiveSocket(object):
     def _initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
             self._establish_connection()
-
-            bytes = self.connection.recv(4)
+            r = None
+            while not r:
+                r, _, _ = select.select([self.socket], [], [])
+                if r:
+                    bytes = self.connection.recv(4)
             data_type = struct.unpack('I', bytes)[0]
 
             if data_type == NUMPY:
