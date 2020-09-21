@@ -21,29 +21,27 @@ def _get_socket():
 
 
 class TCPSendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True):
+    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True):
         self.send_type = send_type
         self.data_to_send = b'0'
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.new_value_available = Event()
-        self.thread = Thread(target=self.run)
+        self.thread = Thread(target=self._run)
         self.stop_thread = Event()
         self.connected = False
         self.socket = _get_socket()
         self.socket.bind((self.ip, self.port))
         self.connection = None
         self.verbose = verbose
+        self.as_server = as_server
 
-    def _socket_accept(self):
-        self.connection, client_address = self.socket.accept()
-
-    def run(self):
-        while True:
-            while not self.connected:
-                if self.stop_thread.is_set():
-                    break
-                self.socket = _get_socket()
+    def _establish_connection(self):
+        while not self.connected:
+            if self.stop_thread.is_set():
+                break
+            self.socket = _get_socket()
+            if self.as_server:
                 self.socket.bind((self.ip, self.port))
                 self.socket.setblocking(0)
                 if self.verbose:
@@ -57,8 +55,24 @@ class TCPSendSocket(object):
                     except BlockingIOError:
                         continue
                     self.connected = True
-                    type_msg = struct.pack('I', self.send_type)
-                    self.connection.sendall(type_msg)
+            else:
+                while not self.connected:
+                    try:
+                        self.socket.connect((self.ip, self.port))
+                    except (ConnectionError, OSError) as e:
+                        # print(e)
+                        self.socket = _get_socket()
+                        time.sleep(0.001)
+                        continue
+                    self.connection = self.socket
+                    self.connected = True
+
+    def _run(self):
+        while True:
+            if not self.connected:
+                self._establish_connection()
+                type_msg = struct.pack('I', self.send_type)
+                self.connection.sendall(type_msg)
 
             while not self.new_value_available.is_set():
                 time.sleep(0.0001)
@@ -141,7 +155,7 @@ class TCPSendSocket(object):
 
 # a client socket
 class TCPReceiveSocket(object):
-    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True):
+    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True, as_server=False):
         if handler_function is None:
             def pass_func(data):
                 pass
@@ -157,13 +171,15 @@ class TCPReceiveSocket(object):
         self.new_data_flag = Event()
         self.handler_thread = Thread(target=self._handler)
         self.socket = _get_socket()
-        self.thread = Thread(target=self.receive_data)
+        self.thread = Thread(target=self._receive_data)
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
         self.is_connected = False
         self.shut_down_flag = Event()
         self.data_mode = None
+        self.as_server = as_server
+        self.connection = None
 
     @property
     def new_data(self):
@@ -191,20 +207,42 @@ class TCPReceiveSocket(object):
         self.socket.close()
         self.socket = _get_socket()
 
-    def initialize(self):
-        while not self.is_connected and not self.shut_down_flag.is_set():
-            try:
-                self.socket.connect((self.ip, self.port))
-            except (ConnectionError, OSError) as e:
-                # print(e)
-                self.socket = _get_socket()
-                time.sleep(0.001)
-                continue
-            if self.verbose:
-                print("connected on port ", self.port)
-            self.is_connected = True
+    def _establish_connection(self):
+        while not self.is_connected:
+            if self.shut_down_flag.is_set():
+                break
+            self.socket = _get_socket()
+            if self.as_server:
+                self.socket.bind((self.ip, self.port))
+                self.socket.setblocking(0)
+                if self.verbose:
+                    print('listening on port ', self.port)
+                self.socket.listen(1)
+                while not self.is_connected:
+                    if self.shut_down_flag.is_set():
+                        return
+                    try:
+                        self.connection, client_address = self.socket.accept()
+                    except BlockingIOError:
+                        continue
+                    self.is_connected = True
+            else:
+                while not self.is_connected:
+                    try:
+                        self.socket.connect((self.ip, self.port))
+                    except (ConnectionError, OSError) as e:
+                        # print(e)
+                        self.socket = _get_socket()
+                        time.sleep(0.001)
+                        continue
+                    self.connection = self.socket
+                    self.is_connected = True
 
-            bytes = self.socket.recv(4)
+    def _initialize(self):
+        while not self.is_connected and not self.shut_down_flag.is_set():
+            self._establish_connection()
+
+            bytes = self.connection.recv(4)
             data_type = struct.unpack('I', bytes)[0]
 
             if data_type == NUMPY:
@@ -223,8 +261,8 @@ class TCPReceiveSocket(object):
             self.new_data_flag.clear()
             self.handler_thread.start()
 
-    def receive_data(self):
-        self.initialize()
+    def _receive_data(self):
+        self._initialize()
         while self.is_connected and not self.shut_down_flag.is_set():
             toread = 4
             buf = bytearray(toread)
@@ -233,7 +271,7 @@ class TCPReceiveSocket(object):
                 if self.shut_down_flag.is_set():
                     return
                 try:
-                    nbytes = self.socket.recv_into(view, toread)
+                    nbytes = self.connection.recv_into(view, toread)
                 except OSError:
                     continue
                 view = view[nbytes:]  # slicing views is cheap
@@ -246,7 +284,7 @@ class TCPReceiveSocket(object):
                 if self.shut_down_flag.is_set():
                     return
                 try:
-                    nbytes = self.socket.recv_into(view, toread)
+                    nbytes = self.connection.recv_into(view, toread)
                 except OSError:
                     continue
                 view = view[nbytes:]  # slicing views is cheap
