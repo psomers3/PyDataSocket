@@ -51,9 +51,11 @@ class TCPSendSocket(object):
 
     def send_data(self, data):
         """
-        Send the data to the socket.
+        Send the data to the socket. Use an appropriate send_type for the data that will be sent (i.e. don't use JSON
+        for a 500x500 numpy array).
         :param data: the format of data is very flexible. Supported formats include:
                      a single numerical value
+                     a string
                      a list of json serializable values (when using JSON format)
                      a numpy array (best with the NUMPY send format)
                      a dict of values or numpy arrays
