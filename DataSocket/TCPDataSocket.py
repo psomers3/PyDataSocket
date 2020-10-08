@@ -29,8 +29,6 @@ class TCPSendSocket(object):
         self.new_value_available = Event()
         self.stop_thread = Event()
         self.socket = _get_socket()
-        self.socket.bind((self.ip, self.port))
-        self.connection = None
         self.verbose = verbose
         self.as_server = as_server
         self.connected_clients = []
@@ -68,11 +66,9 @@ class TCPSendSocket(object):
             if self.stop_thread.is_set():
                 break
             if self.as_server and not self._gather_connections_thread.is_alive():
-                self.socket = _get_socket()
                 self._gather_connections_thread.start()
                 break
             else:
-                self.socket = _get_socket()
                 while not len(self.connected_clients) > 0:
                     try:
                         self.socket.connect((self.ip, self.port))
