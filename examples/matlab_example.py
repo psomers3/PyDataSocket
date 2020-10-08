@@ -14,7 +14,7 @@ def print_data(data):
 
 
 # create a send and receive socket
-send_socket = TCPSendSocket(tcp_port=send_port, tcp_ip=ip, send_type=JSON)
+send_socket = TCPSendSocket(tcp_port=send_port, tcp_ip='', send_type=JSON)
 rec_socket = TCPReceiveSocket(tcp_port=receive_port, handler_function=print_data)
 
 # start the sockets
