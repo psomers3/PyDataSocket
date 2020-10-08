@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 
 with open("README.md", "r") as fh:
@@ -20,4 +20,6 @@ setup(
         "Operating System :: POSIX :: Linux",
     ],
     python_requires='>=3',
+    install_requires=['numpy',
+                      'h5py']
 )
