@@ -3,13 +3,13 @@ import time
 from threading import Thread
 
 
-number_of_messages = 5 # number of sample messages to send
+number_of_messages = 5  # number of sample messages to send
 port = 4001  # TCP port to use
 
 
 # define a function to send data across a TCP socket
 def sending_function():
-    send_socket = TCPSendSocket(tcp_port=port, send_type=JSON, verbose=False, as_server=True)
+    send_socket = TCPSendSocket(tcp_port=port, send_type=JSON, verbose=False, as_server=True, include_time=True)
     send_socket.start(blocking=True)
 
     for i in range(number_of_messages):
@@ -26,7 +26,7 @@ def receiving_function():
 
     # function to run when a new piece of data is received
     def print_value(data):
-        print("value recieved: ", data)
+        print("value received: ", data)
         num_messages_received[0] = 1 + num_messages_received[0]
 
     rec_socket = TCPReceiveSocket(tcp_port=port, handler_function=print_value, as_server=False)

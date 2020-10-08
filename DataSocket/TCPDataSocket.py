@@ -21,7 +21,20 @@ def _get_socket():
 
 
 class TCPSendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True):
+    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False):
+        """
+        A TCP socket class to send data to a specific port and address.
+        :param tcp_port: TCP port to use.
+        :param tcp_ip: ip address to connect to.
+        :param send_type: This is the data type used to send the data. DataSocket.NUMPY uses a numpy file to store the
+               data for sending. This is ideal for large arrays. DataSocket.JSON converts the data to a json formatted string.
+               JSON is best for smaller messages. DataSocket.HDF uses the HDF5 file format and performance is probably
+               comparable to NUMPY.
+        :param verbose: Whether or not to print errors and status messages.
+        :param as_server: Whether to run this socket as a server (default: True) or client. When run as a server, the
+               socket supports multiple clients and sends each message to every connected client.
+        :param include_time: Appends time.time() value when sending the data message.
+        """
         self.send_type = send_type
         self.data_to_send = b'0'
         self.port = int(tcp_port)
@@ -31,9 +44,48 @@ class TCPSendSocket(object):
         self.socket = _get_socket()
         self.verbose = verbose
         self.as_server = as_server
+        self.include_time = include_time
         self.connected_clients = []
         self._gather_connections_thread = Thread(target=self._gather_connections)
         self.sending_thread = Thread(target=self._run)
+
+    def send_data(self, data):
+        """
+        Send the data to the socket.
+        :param data: the format of data is very flexible. Supported formats include:
+                     a single numerical value
+                     a list of json serializable values (when using JSON format)
+                     a numpy array (best with the NUMPY send format)
+                     a dict of values or numpy arrays
+                        i.e.   data = {'data1': numpy_array1,
+                                       'data2': numpy_array2}
+        :return: Nothing
+        """
+        self.data_to_send = data
+        self.new_value_available.set()
+
+    def start(self, blocking=False):
+        """
+        Start the socket service.
+        :param blocking: Will block the calling thread until a connection is established to at least one receiver.
+        :return: Nothing
+        """
+        self._establish_connection()
+        self.sending_thread.start()
+        if blocking:
+            while not len(self.connected_clients) > 0:
+                time.sleep(0.05)
+
+    def stop(self):
+        """
+        Stop the socket and it's associated threads.
+        """
+        self.stop_thread.set()
+        if self._gather_connections_thread.is_alive():
+            self._gather_connections_thread.join(timeout=2)
+        if self.sending_thread.is_alive():
+            self.sending_thread.join(timeout=2)
+        self.socket.close()
 
     def _gather_connections(self):
         self.socket.bind((self.ip, self.port))
@@ -91,16 +143,14 @@ class TCPSendSocket(object):
             self._send_data()
             self.new_value_available.clear()
 
-    def send_data(self, data):
-        self.data_to_send = data
-        self.new_value_available.set()
-
     def _send_data(self):
         if len(self.connected_clients) < 1:
             return
-
+        now = time.time()
         if self.send_type == NUMPY:
             if isinstance(self.data_to_send, dict):
+                if self.include_time:
+                    self.data_to_send['_time'] = now
                 for key in self.data_to_send.keys():
                     self.data_to_send[key] = np.asarray(self.data_to_send[key])
                 f = BytesIO()
@@ -108,7 +158,10 @@ class TCPSendSocket(object):
             else:
                 data_as_numpy = np.asarray(self.data_to_send)
                 f = BytesIO()
-                np.savez_compressed(f, data=data_as_numpy)
+                if self.include_time:
+                    np.savez_compressed(f, data=data_as_numpy, _time=np.asarray(now))
+                else:
+                    np.savez_compressed(f, data=data_as_numpy)
 
             # determine file size in bytes
             f.seek(0, os.SEEK_END)
@@ -117,23 +170,40 @@ class TCPSendSocket(object):
             f = f.read()
 
         elif self.send_type == JSON:
-            try:
-                f = json.dumps(self.data_to_send).encode()
-            except TypeError:
+            if self.include_time:
+                data_as_dict = {'data': self.data_to_send, '_time': now}
                 try:
-                    f = json.dumps(self.data_to_send.tolist()).encode()
-                except TypeError as e:
-                    print(e)
+                    f = json.dumps(data_as_dict).encode()
+                except TypeError:
+                    try:
+                        data_as_dict['data'] = data_as_dict['data'].tolist()
+                        f = json.dumps(data_as_dict).encode()
+                    except TypeError as e:
+                        print(e)
+            else:
+                try:
+                    f = json.dumps(self.data_to_send).encode()
+                except TypeError:
+                    try:
+                        f = json.dumps(self.data_to_send.tolist()).encode()
+                    except TypeError as e:
+                        print(e)
 
             size = len(f)
         elif self.send_type == HDF:
             f = BytesIO()
             h5f = h5py.File(f, 'w')
             if isinstance(self.data_to_send, dict):
+                if self.include_time:
+                    self.data_to_send['_time'] = now
                 for key in self.data_to_send.keys():
                     h5f.create_dataset(key, data=self.data_to_send[key])
             else:
-                h5f.create_dataset('data', data=self.data_to_send)
+                if self.include_time:
+                    h5f.create_dataset('data', data=self.data_to_send, _time=now)
+                else:
+                    h5f.create_dataset('data', data=self.data_to_send)
+
             h5f.close()
             # determine file size in bytes
             f.seek(0, os.SEEK_END)
@@ -152,25 +222,23 @@ class TCPSendSocket(object):
                 print(e)
             connection[2] = False
 
-    def start(self, blocking=False):
-        self._establish_connection()
-        self.sending_thread.start()
-        if blocking:
-            while not len(self.connected_clients) > 0:
-                time.sleep(0.05)
-
-    def stop(self):
-        self.stop_thread.set()
-        if self._gather_connections_thread.is_alive():
-            self._gather_connections_thread.join(timeout=2)
-        if self.sending_thread.is_alive():
-            self.sending_thread.join(timeout=2)
-        self.socket.close()
-
 
 # a client socket
 class TCPReceiveSocket(object):
     def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True, as_server=False):
+        """
+        Receiving TCP socket to be used with TCPSendSocket.
+        :param tcp_port: TCP port to use.
+        :param handler_function: The handle to a function that will be called everytime a message is received. Must take
+               one parameter that is the message. The message is exactly what was sent from TCPSendSocket.
+               example:
+                        def my_handler(received_data):
+                            print(received_data)
+        :param tcp_ip: ip address to connect to.
+        :param verbose: Whether or not to print errors and status messages.
+        :param as_server: Whether to run this socket as a server (default: True) or client. This needs to be opposite
+                          whatever the SendSocket is configured to be.
+        """
         if handler_function is None:
             def pass_func(data):
                 pass
@@ -196,23 +264,21 @@ class TCPReceiveSocket(object):
         self.as_server = as_server
         self.connection = None
 
-    @property
-    def new_data(self):
-        with self._new_data_lock:
-            return self._new_data
-
-    @new_data.setter
-    def new_data(self, data):
-        with self._new_data_lock:
-            self._new_data = data
-
     def start(self, blocking=False):
+        """
+        Start the socket service.
+        :param blocking: Will block the calling thread until a connection is established to at least one receiver.
+        :return: Nothing
+        """
         self.thread.start()
         if blocking:
             while not self.is_connected:
                 time.sleep(0.05)
 
     def stop(self):
+        """
+        Stop the socket and it's associated threads.
+        """
         self.shut_down_flag.set()
         if self.thread.is_alive():
             self.thread.join(timeout=2)
@@ -222,6 +288,16 @@ class TCPReceiveSocket(object):
         self.shut_down_flag.clear()
         self.socket.close()
         self.socket = _get_socket()
+
+    @property
+    def new_data(self):
+        with self._new_data_lock:
+            return self._new_data
+
+    @new_data.setter
+    def new_data(self, data):
+        with self._new_data_lock:
+            self._new_data = data
 
     def _establish_connection(self):
         while not self.is_connected:
