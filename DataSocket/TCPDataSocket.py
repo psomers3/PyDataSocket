@@ -1,5 +1,5 @@
 from threading import Event, Thread, Lock
-from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR
+from socket import socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY, SOL_SOCKET, SO_REUSEADDR, error
 import time
 from io import BytesIO
 import numpy as np
@@ -27,53 +27,65 @@ class TCPSendSocket(object):
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.new_value_available = Event()
-        self.thread = Thread(target=self._run)
         self.stop_thread = Event()
-        self.connected = False
         self.socket = _get_socket()
         self.socket.bind((self.ip, self.port))
         self.connection = None
         self.verbose = verbose
         self.as_server = as_server
+        self.connected_clients = []
+        self._gather_connections_thread = Thread(target=self._gather_connections)
+        self.sending_thread = Thread(target=self._run)
+
+    def _gather_connections(self):
+        self.socket.bind((self.ip, self.port))
+        self.socket.setblocking(0)
+        if self.verbose:
+            print('listening on port ', self.port)
+        self.socket.listen(1)
+
+        while not self.stop_thread.is_set():
+            clients_to_remove = []
+            for client in self.connected_clients:
+                if not client[2]:
+                    clients_to_remove.append(client)
+            for client in clients_to_remove:
+                self.connected_clients.remove(client)
+
+            if self.stop_thread.is_set():
+                return
+            try:
+                connection, client_address = self.socket.accept()
+            except BlockingIOError:
+                continue
+            new_connection = [connection, client_address, True]
+            self.connected_clients.append(new_connection)  # boolean is for connected
+            type_msg = struct.pack('I', self.send_type)
+            new_connection[0].sendall(type_msg)
 
     def _establish_connection(self):
-        while not self.connected:
+        while not len(self.connected_clients) > 0:
             if self.stop_thread.is_set():
                 break
-            self.socket = _get_socket()
-            if self.as_server:
-                self.socket.bind((self.ip, self.port))
-                self.socket.setblocking(0)
-                if self.verbose:
-                    print('listening on port ', self.port)
-                self.socket.listen(1)
-                while not self.connected:
-                    if self.stop_thread.is_set():
-                        return
-                    try:
-                        self.connection, client_address = self.socket.accept()
-                    except BlockingIOError:
-                        continue
-                    self.connected = True
+            if self.as_server and not self._gather_connections_thread.is_alive():
+                self.socket = _get_socket()
+                self._gather_connections_thread.start()
+                break
             else:
-                while not self.connected:
+                self.socket = _get_socket()
+                while not len(self.connected_clients) > 0:
                     try:
                         self.socket.connect((self.ip, self.port))
                     except (ConnectionError, OSError) as e:
-                        # print(e)
                         self.socket = _get_socket()
                         time.sleep(0.001)
                         continue
-                    self.connection = self.socket
-                    self.connected = True
+                    self.connected_clients.append([self.socket, 0, True])
+                    type_msg = struct.pack('I', self.send_type)
+                    self.socket.sendall(type_msg)
 
     def _run(self):
-        while True:
-            if not self.connected:
-                self._establish_connection()
-                type_msg = struct.pack('I', self.send_type)
-                self.connection.sendall(type_msg)
-
+        while not self.stop_thread.is_set():
             while not self.new_value_available.is_set():
                 time.sleep(0.0001)
                 if self.stop_thread.is_set():
@@ -88,6 +100,9 @@ class TCPSendSocket(object):
         self.new_value_available.set()
 
     def _send_data(self):
+        if len(self.connected_clients) < 1:
+            return
+
         if self.send_type == NUMPY:
             if isinstance(self.data_to_send, dict):
                 for key in self.data_to_send.keys():
@@ -96,7 +111,6 @@ class TCPSendSocket(object):
                 np.savez_compressed(f, **self.data_to_send)
             else:
                 data_as_numpy = np.asarray(self.data_to_send)
-                # print(np.max(data_as_numpy))
                 f = BytesIO()
                 np.savez_compressed(f, data=data_as_numpy)
 
@@ -131,25 +145,30 @@ class TCPSendSocket(object):
             f.seek(0)
             f = f.read()
 
+        [self._send_f(connection, size, f) for connection in self.connected_clients]
+
+    def _send_f(self, connection, size, file):
         try:
-            self.connection.send(struct.pack('I', size))
-            self.connection.sendall(f)  # Send data
+            connection[0].send(struct.pack('I', size))
+            connection[0].sendall(file)  # Send data
         except ConnectionError as e:
             if self.verbose:
                 print(e)
-            self.socket.close()
-            self.connected = False
+            connection[2] = False
 
     def start(self, blocking=False):
-        self.thread.start()
+        self._establish_connection()
+        self.sending_thread.start()
         if blocking:
-            while not self.connected:
+            while not len(self.connected_clients) > 0:
                 time.sleep(0.05)
 
     def stop(self):
         self.stop_thread.set()
-        if self.thread.is_alive():
-            self.thread.join(timeout=2)
+        if self._gather_connections_thread.is_alive():
+            self._gather_connections_thread.join(timeout=2)
+        if self.sending_thread.is_alive():
+            self.sending_thread.join(timeout=2)
         self.socket.close()
 
 
@@ -242,7 +261,12 @@ class TCPReceiveSocket(object):
     def _initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
             self._establish_connection()
-            bytes_received = self.connection.recv(4)
+            try:
+                bytes_received = self.connection.recv(4)
+            except error as e:
+                time.sleep(0.25)
+                bytes_received = self.connection.recv(4)
+
             data_type = struct.unpack('I', bytes_received)[0]
 
             if data_type == NUMPY:
