@@ -256,7 +256,7 @@ class TCPReceiveSocket(object):
         self.new_data_flag = Event()
         self.handler_thread = Thread(target=self._handler, daemon=True)
         self.socket = _get_socket()
-        self.thread = Thread(target=self._receive_data, daemon=True)
+        self.thread = Thread(target=self._run, daemon=True)
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
@@ -321,6 +321,7 @@ class TCPReceiveSocket(object):
                         continue
                     self.is_connected = True
             else:
+
                 while not self.is_connected:
                     try:
                         self.socket.connect((self.ip, self.port))
@@ -357,7 +358,16 @@ class TCPReceiveSocket(object):
                     print('Expecting HDF5 files on receive.')
 
             self.new_data_flag.clear()
-            self.handler_thread.start()
+            if not self.handler_thread.is_alive():
+                self.handler_thread.start()
+
+    def _run(self):
+        while not self.shut_down_flag.is_set():
+            try:
+                self._receive_data()
+            except error as e:
+                print(e)
+                self.is_connected = False
 
     def _receive_data(self):
         self._initialize()
@@ -365,26 +375,36 @@ class TCPReceiveSocket(object):
             toread = 4
             buf = bytearray(toread)
             view = memoryview(buf)
-            while toread:
+            while toread and self.is_connected:
                 if self.shut_down_flag.is_set():
                     return
                 try:
                     nbytes = self.connection.recv_into(view, toread)
-                except OSError:
-                    continue
+                except [OSError, error] as e:
+                    print(e)
+                    self.is_connected = False
+                    return
+                if nbytes == 0:
+                    self.is_connected = False
+                    return
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
 
             toread = int.from_bytes(buf, "little")
             buf = bytearray(toread)
             view = memoryview(buf)
-            while toread:
+            while toread and self.is_connected:
                 if self.shut_down_flag.is_set():
                     return
                 try:
                     nbytes = self.connection.recv_into(view, toread)
-                except OSError:
-                    continue
+                except [OSError, error] as e:
+                    print(e)
+                    self.is_connected = False
+                    return
+                if nbytes == 0:
+                    self.is_connected = False
+                    return
                 view = view[nbytes:]  # slicing views is cheap
                 toread -= nbytes
 

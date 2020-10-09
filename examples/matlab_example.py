@@ -1,7 +1,7 @@
 from DataSocket import TCPSendSocket, JSON, TCPReceiveSocket
 import time
 import numpy as np
-
+import threading
 
 send_port = 4242
 receive_port = 4343
@@ -21,13 +21,21 @@ rec_socket = TCPReceiveSocket(tcp_port=receive_port, handler_function=print_data
 send_socket.start()
 rec_socket.start()
 
-# wait 5 seconds to give time to start the matlab script
-time.sleep(5)
+stop_flag = threading.Event()
 
-for i in range(10):
-    # send a random 4x4 numpy array to matlab
-    send_socket.send_data(np.random.random((4, 4)))
-    time.sleep(0.5)
+
+def send_sig():
+    while not stop_flag.is_set():
+        send_socket.send_data(np.random.random((4, 4)))
+        time.sleep(0.5)
+
+
+thread = threading.Thread(target=send_sig)
+thread.start()
+
+input('Press enter to shutdown.')
+stop_flag.set()
+thread.join()
 
 # close the sockets
 rec_socket.stop()
