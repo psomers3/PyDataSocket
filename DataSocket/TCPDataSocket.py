@@ -380,7 +380,7 @@ class TCPReceiveSocket(object):
                     return
                 try:
                     nbytes = self.connection.recv_into(view, toread)
-                except [OSError, error] as e:
+                except OSError as e:
                     print(e)
                     self.is_connected = False
                     return
@@ -398,7 +398,7 @@ class TCPReceiveSocket(object):
                     return
                 try:
                     nbytes = self.connection.recv_into(view, toread)
-                except [OSError, error] as e:
+                except OSError as e:
                     print(e)
                     self.is_connected = False
                     return
