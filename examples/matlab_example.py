@@ -26,7 +26,7 @@ stop_flag = threading.Event()
 
 def send_sig():
     while not stop_flag.is_set():
-        send_socket.send_data(np.random.random((4, 4)))
+        send_socket.send_data({'data': np.random.random((4, 4)).tolist()})
         time.sleep(0.5)
 
 

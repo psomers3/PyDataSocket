@@ -1,6 +1,6 @@
 global send_socket
 send_socket = TCPSendSocket(4343, '0.0.0.0');
-rec_socket = TCPReceiveSocket(4242,'127.0.0.1',@echo_back);
+rec_socket = TCPReceiveSocket(4242,'127.0.0.1',   @echo_back);
 % use '127.0.0.1' for windows and 'localhost' for unix systems
 
 'start send'

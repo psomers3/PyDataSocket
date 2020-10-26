@@ -11,6 +11,7 @@ import h5py
 NUMPY = 1
 JSON = 2
 HDF = 3
+RAW = 4
 
 
 def _get_socket():
@@ -21,7 +22,7 @@ def _get_socket():
 
 
 class TCPSendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False):
+    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False, data_format_string='f'):
         """
         A TCP socket class to send data to a specific port and address.
         :param tcp_port: TCP port to use.
@@ -34,7 +35,10 @@ class TCPSendSocket(object):
         :param as_server: Whether to run this socket as a server (default: True) or client. When run as a server, the
                socket supports multiple clients and sends each message to every connected client.
         :param include_time: Appends time.time() value when sending the data message.
+        :param data_format_string: package format string for the struct module for packing data to be sent.
         """
+        self.data_format_string = data_format_string
+        self.raw_format_size = struct.calcsize(self.data_format_string)
         self.send_type = send_type
         self.data_to_send = b'0'
         self.port = int(tcp_port)
@@ -112,8 +116,9 @@ class TCPSendSocket(object):
                 continue
             new_connection = [connection, client_address, True]
             self.connected_clients.append(new_connection)  # boolean is for connected
-            type_msg = struct.pack('I', self.send_type)
-            new_connection[0].sendall(type_msg)
+            if not self.send_type == RAW:
+                type_msg = struct.pack('I', self.send_type)
+                new_connection[0].sendall(type_msg)
 
     def _establish_connection(self):
         while not len(self.connected_clients) > 0:
@@ -185,7 +190,7 @@ class TCPSendSocket(object):
             else:
                 try:
                     f = json.dumps(self.data_to_send).encode()
-                except TypeError:
+                except TypeError as e1:
                     try:
                         f = json.dumps(self.data_to_send.tolist()).encode()
                     except TypeError as e:
@@ -213,11 +218,15 @@ class TCPSendSocket(object):
             f.seek(0)
             f = f.read()
 
+        elif self.send_type == RAW:
+            size = self.raw_format_size
+            f = struct.pack(self.data_format_string, *self.data_to_send)
         [self._send_f(connection, size, f) for connection in self.connected_clients]
 
     def _send_f(self, connection, size, file):
         try:
-            connection[0].send(struct.pack('I', size))
+            if not self.send_type == RAW:
+                connection[0].send(struct.pack('I', size))
             connection[0].sendall(file)  # Send data
         except ConnectionError as e:
             if self.verbose:
