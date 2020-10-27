@@ -194,7 +194,7 @@ class TCPSendSocket(object):
                     try:
                         f = json.dumps(self.data_to_send.tolist()).encode()
                     except TypeError as e:
-                        print(e)
+                        print(e1, e)
 
             size = len(f)
         elif self.send_type == HDF:
@@ -236,7 +236,7 @@ class TCPSendSocket(object):
 
 # a client socket
 class TCPReceiveSocket(object):
-    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True, as_server=False):
+    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True, as_server=False, receive_as_raw=False):
         """
         Receiving TCP socket to be used with TCPSendSocket.
         :param tcp_port: TCP port to use.
@@ -250,6 +250,7 @@ class TCPReceiveSocket(object):
         :param as_server: Whether to run this socket as a server (default: True) or client. This needs to be opposite
                           whatever the SendSocket is configured to be.
         """
+        self.receive_as_raw = receive_as_raw
         if handler_function is None:
             def pass_func(data):
                 pass
@@ -345,13 +346,16 @@ class TCPReceiveSocket(object):
     def _initialize(self):
         while not self.is_connected and not self.shut_down_flag.is_set():
             self._establish_connection()
-            try:
-                bytes_received = self.connection.recv(4)
-            except error as e:
-                time.sleep(0.25)
-                bytes_received = self.connection.recv(4)
+            if not self.receive_as_raw:
+                try:
+                    bytes_received = self.connection.recv(4)
+                except error as e:
+                    time.sleep(0.25)
+                    bytes_received = self.connection.recv(4)
 
-            data_type = struct.unpack('I', bytes_received)[0]
+                data_type = struct.unpack('I', bytes_received)[0]
+            else:
+                data_type = RAW
 
             if data_type == NUMPY:
                 self.data_mode = NUMPY
@@ -365,6 +369,10 @@ class TCPReceiveSocket(object):
                 self.data_mode = HDF
                 if self.verbose:
                     print('Expecting HDF5 files on receive.')
+            elif data_type == RAW:
+                self.data_mode = HDF
+                if self.verbose:
+                    print('Expecting raw data on receive.')
 
             self.new_data_flag.clear()
             if not self.handler_thread.is_alive():
@@ -373,10 +381,19 @@ class TCPReceiveSocket(object):
     def _run(self):
         while not self.shut_down_flag.is_set():
             try:
-                self._receive_data()
+                if self.receive_as_raw:
+                    self._receive_data_raw()
+                else:
+                    self._receive_data()
             except error as e:
                 print(e)
                 self.is_connected = False
+
+    def _receive_data_raw(self):
+        self._initialize()
+        while self.is_connected and not self.shut_down_flag.is_set():
+            self.new_data = self.connection.recv(4096)
+            self.new_data_flag.set()
 
     def _receive_data(self):
         self._initialize()
