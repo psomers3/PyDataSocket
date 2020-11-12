@@ -376,7 +376,10 @@ class TCPReceiveSocket(object):
 
             self.new_data_flag.clear()
             if not self.handler_thread.is_alive():
-                self.handler_thread.start()
+                try:
+                    self.handler_thread.start()
+                except RuntimeError:
+                    pass
 
     def _run(self):
         while not self.shut_down_flag.is_set():
