@@ -5,6 +5,8 @@ classdef TCPSendSocket < handle
       socket
       message_format = 0;  % 1 = numpy array or dict of numpy arrays
                            % 2 = json message
+                           % 3 = HDF message
+                           % 4 = raw data
    end
    methods
       function obj = TCPSendSocket(tcp_port, tcp_ip, message_format)
@@ -25,6 +27,7 @@ classdef TCPSendSocket < handle
          else
             error('Need to supply at least tcp_port, tcp_ip');
          end
+         obj.socket.OutputBufferSize = 32768;
       end
       
       function start(self)
@@ -37,7 +40,9 @@ classdef TCPSendSocket < handle
               end
               is_started = true;
           end
-          fwrite(self.socket, self.message_format, 'int32');
+          if ~(self.message_format == 4)
+            fwrite(self.socket, self.message_format, 'int32');
+          end
       end
       
       function stop(self)
@@ -46,8 +51,10 @@ classdef TCPSendSocket < handle
       
       function send_data(self, data)
          encoded = jsonencode(data);
-         length = strlength(encoded);
-         fwrite(self.socket, length, 'int32');
+         if ~(self.message_format == 4)
+             length = strlength(encoded);
+             fwrite(self.socket, length, 'int32');
+         end
          fwrite(self.socket, encoded, 'char');
       end
    end

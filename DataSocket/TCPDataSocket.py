@@ -395,6 +395,9 @@ class TCPReceiveSocket(object):
         self._initialize()
         while self.is_connected and not self.shut_down_flag.is_set():
             self.new_data = self.connection.recv(4096)
+            if len(self.new_data) == 0:
+                self.is_connected = False
+                continue
             self.new_data_flag.set()
 
     def _receive_data(self):

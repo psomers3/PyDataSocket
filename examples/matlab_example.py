@@ -2,6 +2,7 @@ from DataSocket import TCPSendSocket, JSON, TCPReceiveSocket
 import time
 import numpy as np
 import threading
+import struct
 
 send_port = 4242
 receive_port = 4343
@@ -15,7 +16,7 @@ def print_data(data):
 
 # create a send and receive socket
 send_socket = TCPSendSocket(tcp_port=send_port, tcp_ip='', send_type=JSON)
-rec_socket = TCPReceiveSocket(tcp_port=receive_port, handler_function=print_data)
+rec_socket = TCPReceiveSocket(tcp_port=receive_port, handler_function=print_data, receive_as_raw=False)
 
 # start the sockets
 send_socket.start()
