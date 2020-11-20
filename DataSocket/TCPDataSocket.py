@@ -22,7 +22,7 @@ def _get_socket():
 
 
 class TCPSendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False, data_format_string='f'):
+    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False):
         """
         A TCP socket class to send data to a specific port and address.
         :param tcp_port: TCP port to use.
@@ -30,15 +30,13 @@ class TCPSendSocket(object):
         :param send_type: This is the data type used to send the data. DataSocket.NUMPY uses a numpy file to store the
                data for sending. This is ideal for large arrays. DataSocket.JSON converts the data to a json formatted string.
                JSON is best for smaller messages. DataSocket.HDF uses the HDF5 file format and performance is probably
-               comparable to NUMPY.
+               comparable to NUMPY. DataSocket.RAW expects a bytes object and sends it directly with no processing. The
+               receiving socket must be manually set to receive raw data.
         :param verbose: Whether or not to print errors and status messages.
         :param as_server: Whether to run this socket as a server (default: True) or client. When run as a server, the
                socket supports multiple clients and sends each message to every connected client.
         :param include_time: Appends time.time() value when sending the data message.
-        :param data_format_string: package format string for the struct module for packing data to be sent.
         """
-        self.data_format_string = data_format_string
-        self.raw_format_size = struct.calcsize(self.data_format_string)
         self.send_type = send_type
         self.data_to_send = b'0'
         self.port = int(tcp_port)
@@ -219,8 +217,8 @@ class TCPSendSocket(object):
             f = f.read()
 
         elif self.send_type == RAW:
-            size = self.raw_format_size
-            f = struct.pack(self.data_format_string, *self.data_to_send)
+            size = None
+            f = self.data_to_send
         [self._send_f(connection, size, f) for connection in self.connected_clients]
 
     def _send_f(self, connection, size, file):
@@ -249,6 +247,7 @@ class TCPReceiveSocket(object):
         :param verbose: Whether or not to print errors and status messages.
         :param as_server: Whether to run this socket as a server (default: True) or client. This needs to be opposite
                           whatever the SendSocket is configured to be.
+        :param receive_as_raw: Whether or not the incoming data is just raw bytes or is a predefined format (JSON, NUMPY, HDF)
         """
         self.receive_as_raw = receive_as_raw
         if handler_function is None:

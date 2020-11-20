@@ -16,7 +16,7 @@ def print_data(data):
 
 
 # create a send and receive socket
-send_socket = TCPSendSocket(tcp_port=send_port, tcp_ip=ip, send_type=RAW, data_format_string='ff')
+send_socket = TCPSendSocket(tcp_port=send_port, tcp_ip=ip, send_type=RAW)
 receive_socket = TCPReceiveSocket(tcp_port=rec_port, tcp_ip=ip, receive_as_raw=True, handler_function=print_data)
 
 # start the sockets
@@ -28,7 +28,8 @@ stop_flag = threading.Event()
 def send_sig():
     while not stop_flag.is_set():
         data = np.random.random((1, 2)).tolist()[0]
-        send_socket.send_data(data)
+        data_as_bytes = struct.pack('ff', *data)
+        send_socket.send_data(data_as_bytes)
         time.sleep(0.5)
 
 
