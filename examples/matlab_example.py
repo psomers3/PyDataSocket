@@ -2,7 +2,7 @@ from DataSocket import TCPSendSocket, JSON, TCPReceiveSocket
 import time
 import numpy as np
 import threading
-import struct
+import sys
 
 send_port = 4242
 receive_port = 4343
@@ -41,4 +41,4 @@ thread.join()
 # close the sockets
 rec_socket.stop()
 send_socket.stop()
-exit()
+sys.exit()

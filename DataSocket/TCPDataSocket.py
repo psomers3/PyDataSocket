@@ -134,8 +134,9 @@ class TCPSendSocket(object):
                         time.sleep(0.001)
                         continue
                     self.connected_clients.append([self.socket, 0, True])
-                    type_msg = struct.pack('I', self.send_type)
-                    self.socket.sendall(type_msg)
+                    if not self.send_type == RAW:
+                        type_msg = struct.pack('I', self.send_type)
+                        self.socket.sendall(type_msg)
 
     def _run(self):
         while not self.stop_thread.is_set():
@@ -234,7 +235,14 @@ class TCPSendSocket(object):
 
 # a client socket
 class TCPReceiveSocket(object):
-    def __init__(self, tcp_port, handler_function=None, tcp_ip='localhost', verbose=True, as_server=False, receive_as_raw=False):
+    def __init__(self,
+                 tcp_port,
+                 handler_function=None,
+                 tcp_ip='localhost',
+                 verbose=True,
+                 as_server=False,
+                 receive_as_raw=False,
+                 receive_buffer_size=4095):
         """
         Receiving TCP socket to be used with TCPSendSocket.
         :param tcp_port: TCP port to use.
@@ -248,8 +256,11 @@ class TCPReceiveSocket(object):
         :param as_server: Whether to run this socket as a server (default: True) or client. This needs to be opposite
                           whatever the SendSocket is configured to be.
         :param receive_as_raw: Whether or not the incoming data is just raw bytes or is a predefined format (JSON, NUMPY, HDF)
+        :param receive_buffer_size: available buffer size in bytes when receiving messages
         """
+        self.receive_buffer_size = receive_buffer_size
         self.receive_as_raw = receive_as_raw
+        self.max_tcp_packet_size = 1408
         if handler_function is None:
             def pass_func(data):
                 pass
@@ -317,7 +328,7 @@ class TCPReceiveSocket(object):
             self.socket = _get_socket()
             if self.as_server:
                 self.socket.bind((self.ip, self.port))
-                self.socket.setblocking(0)
+                self.socket.setblocking(False)
                 if self.verbose:
                     print('listening on port ', self.port)
                 self.socket.listen(1)
@@ -326,7 +337,7 @@ class TCPReceiveSocket(object):
                         return
                     try:
                         self.connection, client_address = self.socket.accept()
-                    except BlockingIOError:
+                    except BlockingIOError as e:
                         continue
                     self.is_connected = True
             else:
@@ -348,7 +359,8 @@ class TCPReceiveSocket(object):
             if not self.receive_as_raw:
                 try:
                     bytes_received = self.connection.recv(4)
-                except error as e:
+                except BlockingIOError as e:
+                    print(e)
                     time.sleep(0.25)
                     bytes_received = self.connection.recv(4)
 
@@ -369,7 +381,7 @@ class TCPReceiveSocket(object):
                 if self.verbose:
                     print('Expecting HDF5 files on receive.')
             elif data_type == RAW:
-                self.data_mode = HDF
+                self.data_mode = RAW
                 if self.verbose:
                     print('Expecting raw data on receive.')
 
@@ -387,17 +399,45 @@ class TCPReceiveSocket(object):
                     self._receive_data_raw()
                 else:
                     self._receive_data()
-            except error as e:
+            except BlockingIOError as e:
                 print(e)
                 self.is_connected = False
 
     def _receive_data_raw(self):
         self._initialize()
+        buf = bytearray(self.receive_buffer_size)
+        view = memoryview(buf)
+        total_received = 0
+        nbytes = 0
+
         while self.is_connected and not self.shut_down_flag.is_set():
-            self.new_data = self.connection.recv(4096)
-            if len(self.new_data) == 0:
+            try:
+                while nbytes != -1:
+                    try:
+                        nbytes = self.connection.recv_into(view, self.receive_buffer_size - total_received - 1)
+                    except BlockingIOError as e:
+                        if nbytes > 0 and nbytes % self.max_tcp_packet_size != 0:
+                            raise e
+                        elif nbytes == 0:
+                            continue
+                        else:
+                            continue
+
+                    total_received += nbytes
+                    view = view[nbytes:]  # slicing views is cheap
+
+            except BlockingIOError as e:
+                if total_received > 0:
+                    nbytes = -1
+                    self.new_data = bytes(buf[:total_received])
+                    view = memoryview(buf)
+                continue
+
+            if nbytes == 0:
                 self.is_connected = False
                 continue
+            nbytes = 0
+            total_received = 0
             self.new_data_flag.set()
 
     def _receive_data(self):
