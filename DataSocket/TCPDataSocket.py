@@ -422,6 +422,9 @@ class TCPReceiveSocket(object):
                             continue
                         else:
                             continue
+                    if nbytes == 0:
+                        self.is_connected = False
+                        break
 
                     total_received += nbytes
                     view = view[nbytes:]  # slicing views is cheap
