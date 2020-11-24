@@ -9,10 +9,13 @@ send_port = 4242
 receive_port = 4343
 ip = '0.0.0.0'
 
+start_time = time.time()
 
 # define function to print the echo back from matlab
 def print_data(data):
-    print('length of returned array:', np.frombuffer(data, dtype='float32').shape[0])
+    global start_time
+    now = time.time()
+    print('length of returned array:', np.frombuffer(data, dtype='float32').shape[0], 'Time for full trip:', now - start_time)
 
 
 # create a send and receive socket
@@ -27,11 +30,13 @@ stop_flag = threading.Event()
 
 
 def send_sig():
+    global start_time
     while not stop_flag.is_set():
         data = np.random.random((100, 100))  # create 100x100 array of random numbers
         data_as_bytes = data.astype('float32').flatten().tostring()  # flatten it before sending
+        start_time = time.time()
         send_socket.send_data(data_as_bytes)
-        time.sleep(1)
+        time.sleep(0.5)
 
 
 thread = threading.Thread(target=send_sig)

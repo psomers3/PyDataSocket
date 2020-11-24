@@ -1,6 +1,8 @@
 from DataSocket import TCPSendSocket, TCPReceiveSocket, NUMPY
 import time
 from threading import Thread
+import sys
+import numpy as np
 
 
 number_of_messages = 5  # number of sample messages to send
@@ -13,7 +15,8 @@ def sending_function():
     send_socket.start(blocking=True)
 
     for i in range(number_of_messages):
-        send_socket.send_data(i*10)
+        send_socket.send_data({'i': i*10,
+                               'data': np.random.random(4)})
         time.sleep(0.25)
 
     print("closing send socket.")
@@ -26,7 +29,7 @@ def receiving_function():
 
     # function to run when a new piece of data is received
     def print_value(data):
-        print("value received: ", data['data'])
+        print('i=', data['i'], "data received: ", data['data'])
         num_messages_received[0] = 1 + num_messages_received[0]
 
     rec_socket = TCPReceiveSocket(tcp_port=port, handler_function=print_value)
@@ -50,3 +53,4 @@ if __name__ == '__main__':
 
     send_thread.join()
     rec_thread.join()
+    sys.exit()

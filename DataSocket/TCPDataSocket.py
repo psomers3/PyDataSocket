@@ -22,7 +22,14 @@ def _get_socket():
 
 
 class TCPSendSocket(object):
-    def __init__(self, tcp_port, tcp_ip='localhost', send_type=NUMPY, verbose=True, as_server=True, include_time=False):
+    def __init__(self,
+                 tcp_port,
+                 tcp_ip='localhost',
+                 send_type=NUMPY,
+                 verbose=True,
+                 as_server=True,
+                 include_time=False,
+                 as_daemon=True):
         """
         A TCP socket class to send data to a specific port and address.
         :param tcp_port: TCP port to use.
@@ -36,6 +43,7 @@ class TCPSendSocket(object):
         :param as_server: Whether to run this socket as a server (default: True) or client. When run as a server, the
                socket supports multiple clients and sends each message to every connected client.
         :param include_time: Appends time.time() value when sending the data message.
+        :param as_daemon: runs the underlying threads as daemon.
         """
         self.send_type = send_type
         self.data_to_send = b'0'
@@ -48,8 +56,8 @@ class TCPSendSocket(object):
         self.as_server = as_server
         self.include_time = include_time
         self.connected_clients = []
-        self._gather_connections_thread = Thread(target=self._gather_connections)
-        self.sending_thread = Thread(target=self._run)
+        self._gather_connections_thread = Thread(target=self._gather_connections, daemon=as_daemon)
+        self.sending_thread = Thread(target=self._run, daemon=as_daemon)
 
     def send_data(self, data):
         """
@@ -242,7 +250,8 @@ class TCPReceiveSocket(object):
                  verbose=True,
                  as_server=False,
                  receive_as_raw=False,
-                 receive_buffer_size=4095):
+                 receive_buffer_size=4095,
+                 as_daemon=True):
         """
         Receiving TCP socket to be used with TCPSendSocket.
         :param tcp_port: TCP port to use.
@@ -257,6 +266,7 @@ class TCPReceiveSocket(object):
                           whatever the SendSocket is configured to be.
         :param receive_as_raw: Whether or not the incoming data is just raw bytes or is a predefined format (JSON, NUMPY, HDF)
         :param receive_buffer_size: available buffer size in bytes when receiving messages
+        :param as_daemon: runs underlying threads as daemon.
         """
         self.receive_buffer_size = receive_buffer_size
         self.receive_as_raw = receive_as_raw
@@ -274,9 +284,9 @@ class TCPReceiveSocket(object):
         self._new_data = None
         self._new_data_lock = Lock()
         self.new_data_flag = Event()
-        self.handler_thread = Thread(target=self._handler, daemon=True)
+        self.handler_thread = Thread(target=self._handler, daemon=as_daemon)
         self.socket = _get_socket()
-        self.thread = Thread(target=self._run, daemon=True)
+        self.thread = Thread(target=self._run, daemon=as_daemon)
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
@@ -289,8 +299,7 @@ class TCPReceiveSocket(object):
     def start(self, blocking=False):
         """
         Start the socket service.
-        :param blocking: Will block the calling thread until a connection is established to at least one receiver.
-        :return: Nothing
+        :param blocking: Will block the calling thread until a connection is established.
         """
         self.thread.start()
         if blocking:

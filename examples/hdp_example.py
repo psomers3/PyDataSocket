@@ -1,6 +1,7 @@
 from DataSocket import TCPSendSocket, TCPReceiveSocket, HDF
 import time
 from threading import Thread
+import sys
 
 
 number_of_messages = 5  # number of sample messages to send
@@ -50,3 +51,5 @@ if __name__ == '__main__':
 
     send_thread.join()
     rec_thread.join()
+
+    sys.exit()
