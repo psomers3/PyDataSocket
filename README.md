@@ -15,6 +15,9 @@ This module provides an easy to use python implementation of TCP Sockets for sen
 - ```pip install .```
 
 ## Usage
+```python
+from DataSocket import TCPReceiveSocket, TCPSendSocket, RAW, JSON, HDF, NUMPY
+```
 These sockets are meant to bind to a single network ip and port  (i.e. 1 SendSocket connects to 1 ReceiveSocket). The exception to this is that when the TCPSendSocket is configured as a server (default setting) multiple TCPReceiveSockets may connect and each will receive the data. The sockets must be started after creation using `start()` and this may be set to block the calling script until connection by passing `blocking=True` to the start function.
 
 The send socket is very simple in that it will take care of everything when data is passed to the `send_data()` method. The recieving socket requires a handling function to be passed on construction to `handler_function`. This function will be called everytime data is received and should expect one input (the entire data message, already decoded if using a mode other than RAW).
