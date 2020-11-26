@@ -1,4 +1,4 @@
-from DataSocket import TCPSendSocket, JSON, TCPReceiveSocket, RAW
+from DataSocket import TCPSendSocket, TCPReceiveSocket, RAW
 import time
 import numpy as np
 import threading
