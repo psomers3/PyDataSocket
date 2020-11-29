@@ -4,6 +4,9 @@ from setuptools import setup
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+from distutils.dir_util import copy_tree, remove_tree
+copy_tree('Matlab', 'DataSocket/Matlab')
+
 setup(
     name="PyDataSocket",
     version="0.0.1",
@@ -14,6 +17,8 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/psomers3/PyDataSocket.git",
     packages=['DataSocket'],
+    package_data={'DataSocket': ['Matlab/TCPReceiveSocket.m', 'Matlab/TCPSendSocket.m']},
+    include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -23,3 +28,5 @@ setup(
     install_requires=['numpy',
                       'h5py']
 )
+
+remove_tree('DataSocket/Matlab')
