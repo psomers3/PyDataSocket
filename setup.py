@@ -9,7 +9,7 @@ copy_tree('Matlab', 'DataSocket/Matlab')
 
 setup(
     name="PyDataSocket",
-    version="0.0.1",
+    version="0.0.2",
     author="Peter Somers",
     author_email="psvd3@umsystem.edu",
     description="A Python module for sending data across TCP sockets",
