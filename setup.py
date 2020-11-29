@@ -11,7 +11,7 @@ setup(
     name="PyDataSocket",
     version="0.0.1",
     author="Peter Somers",
-    author_email="psvd3@mst.edu",
+    author_email="psvd3@umsystem.edu",
     description="A Python module for sending data across TCP sockets",
     long_description=long_description,
     long_description_content_type="text/markdown",
