@@ -10,8 +10,6 @@ This module provides an easy to use python implementation of TCP Sockets for sen
 
 
 ## Install
-- ```git clone https://github.com/psomers3/PyDataSocket.git```
-- ```cd PyDataSocket```
 - ```pip install PyDataSocket```
 
 The matlab files can be installed to a specific directory using the `install_matlab_socket_files(destination)` function, where `destination` is the directory to install the files to.
