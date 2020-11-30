@@ -27,9 +27,9 @@ classdef TCPSendSocket < handle
          else
             error('Need to supply at least tcp_port, tcp_ip');
          end
-         obj.socket.OutputBufferSize = 32768;
+         obj.socket.OutputBufferSize = 131072;
       end
-      
+
       function start(self)
          is_started = false;
           while ~is_started
@@ -44,18 +44,21 @@ classdef TCPSendSocket < handle
             fwrite(self.socket, self.message_format, 'int32');
           end
       end
-      
+
       function stop(self)
         fclose(self.socket);
       end
-      
+
       function send_data(self, data)
-         encoded = jsonencode(data);
          if ~(self.message_format == 4)
+             encoded = jsonencode(data);
              length = strlength(encoded);
              fwrite(self.socket, length, 'int32');
+             fwrite(self.socket, encoded, 'char');
+         else
+             fwrite(self.socket, data)
          end
-         fwrite(self.socket, encoded, 'char');
+
       end
    end
 end

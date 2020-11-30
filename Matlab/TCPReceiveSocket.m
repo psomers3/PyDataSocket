@@ -30,7 +30,7 @@ classdef TCPReceiveSocket < handle
          else
             error('Need to supply tcp_port, tcp_ip, and a callback_function')
          end
-         obj.socket.InputBufferSize = 32768;
+         obj.socket.InputBufferSize = 131072;
       end
       
       function start(self)

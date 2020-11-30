@@ -73,7 +73,7 @@ class TCPReceiveSocket(object):
                             print(received_data)
         :param tcp_ip: ip address to connect to.
         :param verbose: Whether or not to print errors and status messages.
-        :param as_server: Whether to run this socket as a server (default: True) or client. This needs to be opposite
+        :param as_server: Whether to run this socket as a server (default: False) or client. This needs to be opposite
                           whatever the SendSocket is configured to be.
         :param receive_as_raw: Whether or not the incoming data is just raw bytes or is a predefined format (JSON, NUMPY, HDF)
         :param receive_buffer_size: available buffer size in bytes when receiving messages
