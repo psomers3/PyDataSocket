@@ -22,7 +22,7 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: POSIX :: Linux :: Windows :: OSX",
+        "Operating System :: OS Independent",
     ],
     python_requires='>=3',
     install_requires=['numpy',
