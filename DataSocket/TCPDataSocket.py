@@ -427,13 +427,20 @@ class TCPReceiveSocket(object):
                         if nbytes > 0 and nbytes % self.max_tcp_packet_size != 0:
                             total_received += nbytes
                             raise BlockingIOError
-                    except BlockingIOError as e:
-                        if nbytes > 0 and nbytes % self.max_tcp_packet_size != 0:
-                            raise e
-                        elif nbytes == 0:
-                            continue
+                    except Exception as e:
+                        if isinstance(e, error):
+                            self.is_connected = False
+                            nbytes=0
+                            break
+                        elif isinstance(e, BlockingIOError):
+                            if nbytes > 0 and nbytes % self.max_tcp_packet_size != 0:
+                                raise e
+                            elif nbytes == 0:
+                                continue
+                            else:
+                                continue
                         else:
-                            continue
+                            raise e
                     if nbytes == 0:
                         self.is_connected = False
                         break
