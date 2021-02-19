@@ -55,7 +55,7 @@ class TCPSendSocket(object):
         self.verbose = verbose
         self.as_server = as_server
         self.include_time = include_time
-        self.connected_clients = []
+        self.connected_clients = []  # type: list[list[socket, str, bool]]
         self._gather_connections_thread = Thread(target=self._gather_connections, daemon=as_daemon)
         self.sending_thread = Thread(target=self._run, daemon=as_daemon)
 
@@ -134,6 +134,9 @@ class TCPSendSocket(object):
                 self._gather_connections_thread.start()
                 break
             else:
+                if len(self.connected_clients) > 0:
+                    self.connected_clients[0][0].close()
+                    self.connected_clients.clear()
                 while not len(self.connected_clients) > 0:
                     try:
                         self.socket.connect((self.ip, self.port))
@@ -144,10 +147,18 @@ class TCPSendSocket(object):
                     self.connected_clients.append([self.socket, 0, True])
                     if not self.send_type == RAW:
                         type_msg = struct.pack('I', self.send_type)
-                        self.socket.sendall(type_msg)
+                        try:
+                            self.socket.sendall(type_msg)
+                        except ConnectionError as e:
+                            self.connected_clients.clear()
+                            continue
 
     def _run(self):
         while not self.stop_thread.is_set():
+            if not self.as_server and not self.connected_clients[0][2]:
+                self.connected_clients[0][0].close()
+                self.connected_clients.clear()
+                self._establish_connection()
             while not self.new_value_available.is_set():
                 time.sleep(0.0001)
                 if self.stop_thread.is_set():
@@ -193,7 +204,7 @@ class TCPSendSocket(object):
                         data_as_dict['data'] = data_as_dict['data'].tolist()
                         f = json.dumps(data_as_dict).encode()
                     except TypeError as e:
-                        print(e)
+                        if self.verbose: print(e)
             else:
                 try:
                     f = json.dumps(self.data_to_send).encode()
@@ -201,7 +212,7 @@ class TCPSendSocket(object):
                     try:
                         f = json.dumps(self.data_to_send.tolist()).encode()
                     except TypeError as e:
-                        print(e1, e)
+                        if self.verbose: print(e1, e)
 
             size = len(f)
         elif self.send_type == HDF:
@@ -228,7 +239,7 @@ class TCPSendSocket(object):
         elif self.send_type == RAW:
             size = None
             f = self.data_to_send
-        [self._send_f(connection, size, f) for connection in self.connected_clients]
+        [self._send_f(connection, size, f) for connection in self.connected_clients if connection[2]]
 
     def _send_f(self, connection, size, file):
         try:
@@ -241,7 +252,6 @@ class TCPSendSocket(object):
             connection[2] = False
 
 
-# a client socket
 class TCPReceiveSocket(object):
     def __init__(self,
                  tcp_port,
@@ -285,8 +295,8 @@ class TCPReceiveSocket(object):
         self._new_data_lock = Lock()
         self.new_data_flag = Event()
         self.handler_thread = Thread(target=self._handler, daemon=as_daemon)
-        self.socket = _get_socket()
         self.thread = Thread(target=self._run, daemon=as_daemon)
+        self.socket = _get_socket()
         self.port = int(tcp_port)
         self.ip = tcp_ip
         self.block_size = 0
@@ -355,7 +365,6 @@ class TCPReceiveSocket(object):
                     try:
                         self.socket.connect((self.ip, self.port))
                     except (ConnectionError, OSError) as e:
-                        # print(e)
                         self.socket = _get_socket()
                         time.sleep(0.001)
                         continue
@@ -368,8 +377,11 @@ class TCPReceiveSocket(object):
             if not self.receive_as_raw:
                 try:
                     bytes_received = self.connection.recv(4)
-                except BlockingIOError as e:
-                    print(e)
+                except (BlockingIOError, AttributeError) as e:
+                    if isinstance(e, AttributeError):
+                        self.is_connected = False
+                        continue
+                    if self.verbose: print(e)
                     time.sleep(0.25)
                     bytes_received = self.connection.recv(4)
 
@@ -409,7 +421,7 @@ class TCPReceiveSocket(object):
                 else:
                     self._receive_data()
             except BlockingIOError as e:
-                print(e)
+                if self.verbose: print(e)
                 self.is_connected = False
 
     def _receive_data_raw(self):
@@ -464,6 +476,11 @@ class TCPReceiveSocket(object):
 
     def _receive_data(self):
         self._initialize()
+        if self.as_server:
+            try:
+                self.connection.setblocking(True)
+            except AttributeError as e:
+                self.is_connected = False
         while self.is_connected and not self.shut_down_flag.is_set():
             toread = 4
             buf = bytearray(toread)
@@ -474,7 +491,7 @@ class TCPReceiveSocket(object):
                 try:
                     nbytes = self.connection.recv_into(view, toread)
                 except OSError as e:
-                    print(e)
+                    if self.verbose: print(e)
                     self.is_connected = False
                     return
                 if nbytes == 0:
@@ -492,7 +509,7 @@ class TCPReceiveSocket(object):
                 try:
                     nbytes = self.connection.recv_into(view, toread)
                 except OSError as e:
-                    print(e)
+                    if self.verbose: print(e)
                     self.is_connected = False
                     return
                 if nbytes == 0:
